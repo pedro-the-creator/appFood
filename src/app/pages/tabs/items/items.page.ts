@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Preferences } from '@capacitor/preferences';
 import { NavController } from '@ionic/angular';
+
 
 @Component({
   selector: 'app-items',
@@ -12,6 +14,7 @@ export class ItemsPage implements OnInit {
     {
       uid: 'dh1',
       cover: 'assets/imgs/img1.jpeg',
+      address: "Guarapuava, PR", 
       name: 'Dom Henrique 1',
       short_name: 'domhenrique1',
       cuisines:[
@@ -55,20 +58,6 @@ export class ItemsPage implements OnInit {
       price: 100
     },
   ];
-
-  categories: any[] = [
-    {
-      id: "e00",
-      name: "Italiana",
-      uid: "dh1"
-    },
-    {
-      id: "e01",
-      name: "Mexicana",
-      uid: "dh1"
-    }
-  ];
-
   allItems = [
     {
       category_id: "e00",
@@ -110,37 +99,148 @@ export class ItemsPage implements OnInit {
       veg: false
     }
   ];
-
-  data: any = {};
-  items:any[] = [];
+  categories: any[] = [
+    {
+      id: "e00",
+      name: "Italiana",
+      uid: "dh1"
+    },
+    {
+      id: "e01",
+      name: "Mexicana",
+      uid: "dh1"
+    }
+  ];
+  data: any;
+  items: any = {};
+  cartData: any = {};
+  storeData: any = {};
   id: any;
-  veg : boolean = false;
+  veg: boolean = false;
 
-  constructor(private route: ActivatedRoute, private navCtrl: NavController) { }
+
+
+  constructor(private route: ActivatedRoute, private navCtrl: NavController, private router: Router) { }
 
   ngOnInit() {
-    this.route.paramMap.subscribe(paramMap=>{
+    this.route.paramMap.subscribe(paramMap => {
       if(!paramMap.has('restaurantId')){
         this.navCtrl.back();
         return;
       }
       this.id = paramMap.get('restaurantId');
+      console.log(this.id);
       this.getItems();
     })
   }
 
-  getItems(){
+  async getItems(){
     this.data = {};
-    let data : any = this.restaurants.filter(x => x.uid === this.id);
+    let data: any = this.restaurants.filter(x => x.uid === this.id);
     this.data = data[0];
-    this.items = this.allItems;
+    console.log(this.data);
+    this.items = this.allItems.filter(x => x.uid === this.id);
+    this.categories = this.categories.filter(x => x.uid === this.id);
+    this.storeData = {};
+    let cart : any = await this.getCart();
+    if(cart?.value){
+    this.storeData = JSON.parse(cart.value);
+    if(this.id == this.storeData.restaurant.uid && this.allItems.length > 0){
+    this.allItems.forEach((element: any) => {
+    this.storeData.items.forEach(ele => {
+    if(element.id != ele.id) return;
+    element.quantity = ele.quantity;
+    });
+    });
+    }
+    }
+    this.cartData.totalItem = this.storeData.totalItem;
+    this.cartData.totalPrice = this.storeData.totalPrice;
+  
+  }
+
+  quantityPlus(item, index){
+    try{
+      if(!this.items[index].quantity || this.items[index].quantity === 0){
+        this.items[index].quantity = 1; 
+      }
+      else{
+        this.items[index].quantity += 1; 
+      }
+    }
+    catch(error){
+      console.log(error);
+    }
+    this.calculate()
+  }
+  
+  quantityMinus(item, index){
+    if(this.items[index].quantity !== 0){
+      this.items[index].quantity -= 1; 
+    }
+    else{
+      this.items[index].quantity = 0; 
+    }
+    this.calculate()
+  }
+  
+  calculate(){
+    console.log(this.items);
+    this.cartData.items = []; 
+    let item = this.items.filter(x => x.quantity > 0);
+    this.cartData.items = item; 
+    this.cartData.totalItem = 0;
+    this.cartData.totalPrice = 0; 
+    item.forEach(element => {
+      this.cartData.totalItem += element.quantity;
+      this.cartData.totalPrice += (parseFloat(element.price)) * (parseFloat(element.quantity));
+    });
+    this.cartData.totalPrice = this.cartData.totalPrice.toFixed(2);
+    if(this.cartData.totalItem === 0){
+      this.cartData.totalPrice = 0;
+      this.cartData.totalItem = 0;
+    }
+    this.saveToCart();
+  }
+
+  async saveToCart(){
+    try{
+      this.cartData.restaurant = {};
+      this.cartData.restaurant = this.data;
+      await Preferences.set(
+        {
+          key: 'cart',
+          value: JSON.stringify(this.cartData)
+        }
+        );
+    }
+    catch(error){
+      console.log(error);
+    }
+  }
+
+  async viewCart(){
+    if(this.cartData.items && this.cartData.items.length > 0){
+      await this.saveToCart();
+    }
+    this.router.navigate([this.router.url + '/cart']);
+  }
+
+  getCart(){
+    return Preferences.get({key: 'cartData'});
   }
 
   getCuisine(cuisine){
-    return cuisine.join(', ');
+    return cuisine.join(', ')
   }
 
   vegOnly(event){
-    console.log(event.detail.checked);
+    if (event.detail.checked) {
+      this.items = this.allItems.filter(x => x.veg === true);
+    }
+    else{
+      this.items = this.allItems;
+    }
   }
+
 }
